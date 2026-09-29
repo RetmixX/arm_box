@@ -43,6 +43,10 @@ class RobotARM:
         speed = int(speed_percent * 1023 / 100)
         self.packet_handler.write2ByteTxRx(self.port_handler, dxl_id, 32, speed)
 
+    def set_speed_arm(self, speed_percent: int):
+        for i in range(1, self.dxl_num + 1):
+            self.set_speed(i, speed_percent)
+
     def set_sync_pos(self, positions: list[int]) -> None:
         goal = dict(enumerate(positions, start=1))
         group = GroupSyncWrite(self.port_handler, self.packet_handler, 30, 2)

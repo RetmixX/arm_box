@@ -1,3 +1,4 @@
 .venv
 .idea
 dynamixel_sdk/build
+.env
