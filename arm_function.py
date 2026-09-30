@@ -23,7 +23,7 @@ def _to_bytes(value, size):
 
 
 class RobotARM:
-    def __init__(self, device: str, speed: int = 5, dxl_num: int = 6, baud_rate: int = 1000000, timeout=500.0) -> None:
+    def __init__(self, device: str, speed: int = 5, dxl_num: int = 6, baud_rate: int = 1000000, timeout=1000.0) -> None:
         self.device = device
         self.baud_rate = baud_rate
         self.timeout = timeout
