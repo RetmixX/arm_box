@@ -66,6 +66,7 @@ class RobotARM:
 
     def read_temp(self, dxl_id: int):
         present_temp = self.packet_handler.read2ByteTxRx(self.port_handler, dxl_id, _PRESENT_TEMP)
+        print(present_temp)
         return present_temp[0]
 
     def read_pos(self, dxl_id: int):
