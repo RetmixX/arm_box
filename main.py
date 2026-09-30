@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import json
 import os
 from dotenv import load_dotenv
-from arm_function import RobotARM
+from arm_function import RobotARM, ARMIKError
 
 load_dotenv()
 
@@ -91,6 +91,8 @@ async def set_pos(request: Request, payload: PositionSet):
     arm: RobotARM = request.app.state.arm
     try:
         await run_on_arm(request.app, arm.move_arm, payload.x, payload.z, payload.angel, payload.pov_gripper, payload.gripper_state)
+    except ARMIKError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 

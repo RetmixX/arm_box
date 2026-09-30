@@ -8,6 +8,14 @@ _PRESENT_LOAD = 40
 _PRESENT_POSITION = 30
 
 
+class ARMIKError(Exception):
+    def __init__(self, x, z, angel):
+        self.x = x
+        self.z = z
+        self.angel = angel
+        text = f"x: {self.x} || y: {self.z} || angel: {self.angel}"
+        super().__init__(text)
+
 def _to_bytes(value, size):
     """Число -> список байт (младший байт первым) для addParam()."""
     mask = (1 << (8 * size)) - 1
@@ -88,6 +96,8 @@ class RobotARM:
 
     def move_arm(self, x, z, angel, gripper_pov, gripper_state:bool):
         pos_servo = self.ik.calculate(x, z, angel)
+        if pos_servo is None:
+            raise ARMIKError(x, z, angel)
         pos_servo.append(math.ceil(gripper_pov * 3.41))
         if gripper_state:
             print("True gripper")
