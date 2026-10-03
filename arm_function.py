@@ -61,21 +61,33 @@ class RobotARM:
             out.append(None if tok == "ERR" else int(tok))
         return out
 
+    def _to_dicts(self, resp):
+        """'G 2048 2051 ...' или 'P OK 2048 ...' -> [{"1": 2048}, {"2": 2051}, ...]"""
+        tokens = resp.split()[1:]
+        if tokens and tokens[0] == "OK":
+            tokens = tokens[1:]
+        if len(tokens) != self.dxl_num:
+            raise ARMSerialError(f"Неожиданный ответ: {resp!r}")
+
+        result = []
+        for servo_id, tok in zip(range(1, self.dxl_num + 1), tokens):
+            result.append({str(servo_id): None if tok == "ERR" else int(tok)})
+        return result
+
     def set_speed(self, speed_percent: int):
         self.speed = speed_percent
         speed = int(speed_percent * 1023 / 100)
-        resp = self._query("S", f" {speed}")
-        return self._values(resp[:1] + resp[4:])
+        return self._to_dicts(self._query("S", f" {speed}"))
 
 
     def get_motors_temp(self):
-        return self._values(self._query("T"))
+        return self._to_dicts(self._query("T"))
 
     def get_motors_load(self):
-        return self._values(self._query("L"))
+        return self._to_dicts(self._query("L"))
 
     def get_motors_pos(self):
-        return self._values(self._query("G"))
+        return self._to_dicts(self._query("G"))
 
     def move_arm(self, x, z, angel, gripper_pov, gripper_state:bool):
         pos_servo = self.ik.calculate(x, z, angel)
