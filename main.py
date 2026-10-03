@@ -39,7 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 async def run_on_arm(app: FastAPI, func: Callable[..., Any], *args: Any) -> Any:
-    """Выполнить блокирующий вызов руки в потоке под общим замком."""
     async with app.state.arm_lock:
         return await asyncio.to_thread(func, *args)
 
@@ -102,7 +101,7 @@ async def set_pos(request: Request, payload: PositionSet):
 async def set_speed(request: Request, payload: SpeedSet):
     arm: RobotARM = request.app.state.arm
     try:
-        await run_on_arm(request.app, arm.set_speed_arm, payload.speed)
+        await run_on_arm(request.app, arm.set_speed, payload.speed)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 

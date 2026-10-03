@@ -1,11 +1,8 @@
 import math
+import time
 
 from ik import InverseKinematics
-from dynamixel_sdk import *
-
-_PRESENT_TEMP = 43
-_PRESENT_LOAD = 40
-_PRESENT_POSITION = 30
+import serial
 
 
 class ARMIKError(Exception):
@@ -16,84 +13,68 @@ class ARMIKError(Exception):
         text = f"x: {self.x} || y: {self.z} || angel: {self.angel}"
         super().__init__(text)
 
-def _to_bytes(value, size):
-    """Число -> список байт (младший байт первым) для addParam()."""
-    mask = (1 << (8 * size)) - 1
-    return list((int(value) & mask).to_bytes(size, "little"))
+class ARMSerialError(Exception):
+    pass
 
 
 class RobotARM:
-    def __init__(self, device: str, speed: int = 5, dxl_num: int = 6, baud_rate: int = 1000000, timeout=500.0) -> None:
-        self.device = device
-        self.baud_rate = baud_rate
+    def __init__(self, device: str, speed: int = 3, dxl_num: int = 6, baud_rate: int = 115200, timeout = 1.0) -> None:
+        self.ser = serial.Serial(device, baud_rate, timeout=timeout)
         self.timeout = timeout
-        self.protocol = 1.0
         self.dxl_num = dxl_num
         self.ik = InverseKinematics()
-        self.port_handler = PortHandler(self.device)
-        self.packet_handler = PacketHandler(self.protocol)
-        self.port_handler.setPacketTimeoutMillis(self.timeout)
         self.speed = speed
-        self.port_handler.openPort()
-        if not self.port_handler.is_open:
-            raise Exception("Port not open")
-        self.port_handler.setBaudRate(self.baud_rate)
-
-        for i in range(1, dxl_num + 1):
-            self.packet_handler.write2ByteTxRx(self.port_handler, i, 6, 0)
-            self.packet_handler.write2ByteTxRx(self.port_handler, i, 8, 4095)
-            self.packet_handler.write2ByteTxRx(self.port_handler, i, 24, 1)
-            self.set_speed(i, self.speed)
+        time.sleep(1.5)
+        self.ser.reset_input_buffer()
         self.start_position()
 
-    def set_speed(self, dxl_id: int, speed_percent: int) -> None:
+    def close(self) -> None:
+        self.ser.close()
+
+    def _readline(self):
+        raw = self.ser.readline()
+        return raw.decode("utf-8", errors="replace").strip()
+
+    def _query(self, cmd, args=""):
+        self.ser.reset_input_buffer()
+        line = f"{cmd} {args}".strip() + "\n"
+        self.ser.write(line.encode("ascii"))
+        self.ser.flush()
+
+        deadline = time.time() + self.timeout + 1.0
+        while time.time() < deadline:
+            resp = self._readline()
+            if not resp:
+                continue
+            if resp.startswith("ERR"):
+                raise ARMSerialError(resp)
+            if resp[0].upper() == cmd.upper():
+                return resp
+        raise ARMSerialError(f"Нет ответа на команду '{cmd}' (таймаут)")
+
+    @staticmethod
+    def _values(resp):
+        """'G 2048 2051 ...' -> [2048, 2051, ...]; ERR от мотора -> None."""
+        out = []
+        for tok in resp.split()[1:]:
+            out.append(None if tok == "ERR" else int(tok))
+        return out
+
+    def set_speed(self, speed_percent: int):
         self.speed = speed_percent
         speed = int(speed_percent * 1023 / 100)
-        self.packet_handler.write2ByteTxRx(self.port_handler, dxl_id, 32, speed)
+        resp = self._query("S", f" {speed}")
+        return self._values(resp[:1] + resp[4:])
 
-    def set_speed_arm(self, speed_percent: int):
-        for i in range(1, self.dxl_num + 1):
-            self.set_speed(i, speed_percent)
-
-    def set_sync_pos(self, positions: list[int]) -> None:
-        goal = dict(enumerate(positions, start=1))
-        group = GroupSyncWrite(self.port_handler, self.packet_handler, 30, 2)
-        for dxl_id, pos in goal.items():
-            group.addParam(dxl_id, _to_bytes(pos, 2))
-        group.txPacket()
-        group.clearParam()
-
-
-    def read_temp(self, dxl_id: int):
-        present_temp = self.packet_handler.read2ByteTxRx(self.port_handler, dxl_id, _PRESENT_TEMP)
-        print(present_temp)
-        return present_temp[0]
-
-    def read_pos(self, dxl_id: int):
-        present_pos = self.packet_handler.read2ByteTxRx(self.port_handler, dxl_id, _PRESENT_POSITION)
-        return present_pos[0]
-
-    def read_load(self, dxl_id: int):
-        present_load = self.packet_handler.read2ByteTxRx(self.port_handler, dxl_id, _PRESENT_LOAD)
-        return present_load[0]
 
     def get_motors_temp(self):
-        temps = []
-        for i in range(1, self.dxl_num + 1):
-            temps.append({i: self.read_temp(i)})
-        return temps
+        return self._values(self._query("T"))
 
     def get_motors_load(self):
-        loads = []
-        for i in range(1, self.dxl_num + 1):
-            loads.append({i: self.read_load(i)})
-        return loads
+        return self._values(self._query("L"))
 
     def get_motors_pos(self):
-        pos = []
-        for i in range(1, self.dxl_num + 1):
-            pos.append({i: self.read_pos(i)})
-        return pos
+        return self._values(self._query("G"))
 
     def move_arm(self, x, z, angel, gripper_pov, gripper_state:bool):
         pos_servo = self.ik.calculate(x, z, angel)
@@ -101,23 +82,13 @@ class RobotARM:
             raise ARMIKError(x, z, angel)
         pos_servo.append(math.ceil(gripper_pov * 3.41))
         if gripper_state:
-            print("True gripper")
             pos_servo.append(370)
         else:
-            print("False gripper")
             pos_servo.append(710)
 
-        self.set_sync_pos(pos_servo)
-        for i in range(1, self.dxl_num + 1):
-            pass
-            self.wait_move(i)
+        res = self._query("P", " ".join(str(int(p)) for p in pos_servo))
+        return self._values(res[:1] + res[4:])
 
-    def wait_move(self, dxl_id):
-        while True:
-            status = self.packet_handler.read1ByteTxRx(self.port_handler, dxl_id, 46)[0]
-            if status == 0:
-                print("Move stop")
-                break
 
 
     def start_position(self):

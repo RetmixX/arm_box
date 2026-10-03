@@ -1,2 +1,0 @@
-dynamixel_easy_sdk
-dynamixel_sdk
