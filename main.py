@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Motors API", lifespan=lifespan)
+app = FastAPI(title="Motors API", lifespan=lifespan, host="0.0.0.0", port=8000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
