@@ -26,6 +26,7 @@ class RobotARM:
         self.speed = speed
         time.sleep(1.5)
         self.ser.reset_input_buffer()
+        self.set_speed(self.speed)
         self.start_position()
 
     def close(self) -> None:
