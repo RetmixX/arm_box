@@ -185,10 +185,3 @@ class InverseKinematics:
     def get_result(self):
         return [self.pos1, self.pos2, self.pos3, self.pos4]
 
-
-if __name__ == "__main__":
-    ik = InverseKinematics()
-    pos = ik.calculate(200, 200, 180)
-    print("calculate(200, 200, 180):", pos)
-    print("forward:", tuple(round(v, 2) for v in ik.forward(pos)))
-    print("calculate(400, 60, 180):", ik.calculate(400, 60, 180))
