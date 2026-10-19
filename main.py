@@ -51,6 +51,13 @@ class PositionSet(BaseModel):
     pov_gripper: int
     gripper_state: bool
 
+class PositionSetPaint(BaseModel):
+    x: int
+    z: int
+    angel: int
+    pov_gripper: int
+    paint_pov: int
+
 class SpeedSet(BaseModel):
     speed: int
 
@@ -90,6 +97,18 @@ async def set_pos(request: Request, payload: PositionSet):
     arm: RobotARM = request.app.state.arm
     try:
         await run_on_arm(request.app, arm.move_arm, payload.x, payload.z, payload.angel, payload.pov_gripper, payload.gripper_state)
+    except ARMIKError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return {"status": "Ok"}
+
+@app.post("/api/motors/pos/set-paint")
+async def set_pos(request: Request, payload: PositionSetPaint):
+    arm: RobotARM = request.app.state.arm
+    try:
+        await run_on_arm(request.app, arm.move_arm_paint, payload.x, payload.z, payload.angel, payload.pov_gripper, payload.paint_pov)
     except ARMIKError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

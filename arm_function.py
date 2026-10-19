@@ -102,6 +102,16 @@ class RobotARM:
         res = self._query("P", " ".join(str(int(p)) for p in pos_servo))
         return self._values(res[:1] + res[4:])
 
+    def move_arm_paint(self, x, z, angel, gripper_pov, pain_pov):
+        pos_servo = self.ik.calculate(x, z, angel)
+        if pos_servo is None:
+            raise ARMIKError(x, z, angel)
+        pos_servo.append(math.ceil(gripper_pov * 3.41))
+        pos_servo.append(math.ceil(pain_pov * 3.41))
+
+        res = self._query("P", " ".join(str(int(p)) for p in pos_servo))
+        return self._values(res[:1] + res[4:])
+
 
 
     def start_position(self):
