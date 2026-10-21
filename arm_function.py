@@ -32,7 +32,7 @@ class RobotARM:
         self.ser.reset_input_buffer()
         self.set_speed(self.speed)
         try:
-            self.start_position()
+            self.park_pos()
         except ARMSerialError as e:
             # Не роняем запуск сервиса, если рука не дошла до стартовой позиции
             print(f"Предупреждение: стартовая позиция не достигнута: {e}")
@@ -133,3 +133,6 @@ class RobotARM:
 
     def start_position(self):
         self.move_arm(200, 200, 180, 150, False)
+
+    def park_pos(self):
+        self.move_arm(160, 200, 280, 150, False)
