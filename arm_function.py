@@ -23,7 +23,7 @@ class RobotARM:
         self.ser = serial.Serial(device, baud_rate, timeout=timeout)
         self.timeout = timeout
         # Сколько ждать ответа на P: плата отвечает только после прихода руки в цель.
-        # Должно быть больше MOVE_TIMEOUT_MAX_MS в скетче (15 с).
+        # Должно быть больше MOVE_TIMEOUT_MAX_MS в скетче (30 с).
         self.move_timeout = move_timeout
         self.dxl_num = dxl_num
         self.ik = InverseKinematics()
@@ -31,7 +31,11 @@ class RobotARM:
         time.sleep(1.5)
         self.ser.reset_input_buffer()
         self.set_speed(self.speed)
-        self.start_position()
+        try:
+            self.start_position()
+        except ARMSerialError as e:
+            # Не роняем запуск сервиса, если рука не дошла до стартовой позиции
+            print(f"Предупреждение: стартовая позиция не достигнута: {e}")
 
     def close(self) -> None:
         self.ser.close()
@@ -84,7 +88,12 @@ class RobotARM:
         """Отправляет P и ждёт, пока рука придёт в цель.
         Возвращает фактические позиции после прихода.
         Если рука не дошла за отведённое время - ARMSerialError('ERR P: timeout ...')."""
-        res = self._query("P", " ".join(str(int(p)) for p in pos_servo), wait=self.move_timeout)
+        targets = [int(p) for p in pos_servo]
+        try:
+            res = self._query("P", " ".join(str(p) for p in targets), wait=self.move_timeout)
+        except ARMSerialError as e:
+            # Добавляем цели, чтобы было видно, какой сустав не дошёл
+            raise ARMSerialError(f"{e} | цели: {' '.join(map(str, targets))}") from e
         return self._values(res[:1] + res[4:])   # убираем "OK"
 
     def set_speed(self, speed_percent: int):
