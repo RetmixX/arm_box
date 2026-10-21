@@ -25,7 +25,7 @@ class TorquePayload(BaseModel):
 # ---------- Приложение ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    arm = await asyncio.to_thread(RobotARM, device=device_path, speed=3)
+    arm = await asyncio.to_thread(RobotARM, device=device_path, speed=10)
     app.state.arm = arm
     app.state.arm_lock = asyncio.Lock()
     yield

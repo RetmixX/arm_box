@@ -18,7 +18,7 @@ class ARMSerialError(Exception):
 
 
 class RobotARM:
-    def __init__(self, device: str, speed: int = 3, dxl_num: int = 6, baud_rate: int = 115200,
+    def __init__(self, device: str, speed: int = 10, dxl_num: int = 6, baud_rate: int = 115200,
                  timeout=1.0, move_timeout=35.0) -> None:
         self.ser = serial.Serial(device, baud_rate, timeout=timeout)
         self.timeout = timeout
