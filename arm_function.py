@@ -18,9 +18,13 @@ class ARMSerialError(Exception):
 
 
 class RobotARM:
-    def __init__(self, device: str, speed: int = 3, dxl_num: int = 6, baud_rate: int = 115200, timeout = 1.0) -> None:
+    def __init__(self, device: str, speed: int = 3, dxl_num: int = 6, baud_rate: int = 115200,
+                 timeout=1.0, move_timeout=35.0) -> None:
         self.ser = serial.Serial(device, baud_rate, timeout=timeout)
         self.timeout = timeout
+        # Сколько ждать ответа на P: плата отвечает только после прихода руки в цель.
+        # Должно быть больше MOVE_TIMEOUT_MAX_MS в скетче (15 с).
+        self.move_timeout = move_timeout
         self.dxl_num = dxl_num
         self.ik = InverseKinematics()
         self.speed = speed
@@ -36,13 +40,15 @@ class RobotARM:
         raw = self.ser.readline()
         return raw.decode("utf-8", errors="replace").strip()
 
-    def _query(self, cmd, args=""):
+    def _query(self, cmd, args="", wait=None):
+        """Отправляет команду и ждёт ответ, начинающийся с той же буквы или с ERR.
+        wait - сколько ждать ответа, с (по умолчанию timeout + 1)."""
         self.ser.reset_input_buffer()
         line = f"{cmd} {args}".strip() + "\n"
         self.ser.write(line.encode("ascii"))
         self.ser.flush()
 
-        deadline = time.time() + self.timeout + 1.0
+        deadline = time.time() + (wait if wait is not None else self.timeout + 1.0)
         while time.time() < deadline:
             resp = self._readline()
             if not resp:
@@ -74,11 +80,17 @@ class RobotARM:
             result.append({str(servo_id): None if tok == "ERR" else int(tok)})
         return result
 
+    def _move(self, pos_servo):
+        """Отправляет P и ждёт, пока рука придёт в цель.
+        Возвращает фактические позиции после прихода.
+        Если рука не дошла за отведённое время - ARMSerialError('ERR P: timeout ...')."""
+        res = self._query("P", " ".join(str(int(p)) for p in pos_servo), wait=self.move_timeout)
+        return self._values(res[:1] + res[4:])   # убираем "OK"
+
     def set_speed(self, speed_percent: int):
         self.speed = speed_percent
         speed = int(speed_percent * 1023 / 100)
         return self._to_dicts(self._query("S", f" {speed}"))
-
 
     def get_motors_temp(self):
         return self._to_dicts(self._query("T"))
@@ -89,7 +101,7 @@ class RobotARM:
     def get_motors_pos(self):
         return self._to_dicts(self._query("G"))
 
-    def move_arm(self, x, z, angel, gripper_pov, gripper_state:bool):
+    def move_arm(self, x, z, angel, gripper_pov, gripper_state: bool):
         pos_servo = self.ik.calculate(x, z, angel)
         if pos_servo is None:
             raise ARMIKError(x, z, angel)
@@ -99,8 +111,7 @@ class RobotARM:
         else:
             pos_servo.append(710)
 
-        res = self._query("P", " ".join(str(int(p)) for p in pos_servo))
-        return self._values(res[:1] + res[4:])
+        return self._move(pos_servo)
 
     def move_arm_paint(self, x, z, angel, gripper_pov, pain_pov):
         pos_servo = self.ik.calculate(x, z, angel)
@@ -109,10 +120,7 @@ class RobotARM:
         pos_servo.append(math.ceil(gripper_pov * 3.41))
         pos_servo.append(math.ceil(pain_pov * 3.41))
 
-        res = self._query("P", " ".join(str(int(p)) for p in pos_servo))
-        return self._values(res[:1] + res[4:])
-
-
+        return self._move(pos_servo)
 
     def start_position(self):
         self.move_arm(200, 200, 180, 150, False)
