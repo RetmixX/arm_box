@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 
 from ik import InverseKinematics
@@ -21,6 +22,9 @@ class RobotARM:
     def __init__(self, device: str, speed: int = 10, dxl_num: int = 6, baud_rate: int = 115200,
                  timeout=1.0, move_timeout=35.0) -> None:
         self.ser = serial.Serial(device, baud_rate, timeout=timeout)
+        # Один обмен с платой за раз. Защищает порт, даже если веб-запрос отменили,
+        # а поток с движением ещё работает (asyncio.Lock в этом случае уже отпущен).
+        self._io_lock = threading.Lock()
         self.timeout = timeout
         # Сколько ждать ответа на P: плата отвечает только после прихода руки в цель.
         # Должно быть больше MOVE_TIMEOUT_MAX_MS в скетче (30 с).
@@ -38,7 +42,8 @@ class RobotARM:
             print(f"Предупреждение: стартовая позиция не достигнута: {e}")
 
     def close(self) -> None:
-        self.ser.close()
+        with self._io_lock:
+            self.ser.close()
 
     def _readline(self):
         raw = self.ser.readline()
@@ -47,6 +52,10 @@ class RobotARM:
     def _query(self, cmd, args="", wait=None):
         """Отправляет команду и ждёт ответ, начинающийся с той же буквы или с ERR.
         wait - сколько ждать ответа, с (по умолчанию timeout + 1)."""
+        with self._io_lock:
+            return self._query_locked(cmd, args, wait)
+
+    def _query_locked(self, cmd, args="", wait=None):
         self.ser.reset_input_buffer()
         line = f"{cmd} {args}".strip() + "\n"
         self.ser.write(line.encode("ascii"))
