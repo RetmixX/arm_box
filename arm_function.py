@@ -22,7 +22,7 @@ ARM_PROFILES = {
         "fw_type": 2,
         "ik": ParallelInverseKinematics,
         "dxl_num": 5,
-        "park": (250, 200, 180, 150),     # середина рабочей зоны
+        "park": (250, 300, 280, 150),     # середина рабочей зоны
         "start": (250, 200, 180, 150),
     },
 }
