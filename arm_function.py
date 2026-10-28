@@ -21,8 +21,9 @@ ARM_PROFILES = {
     "parallel": {
         "fw_type": 2,
         "ik": ParallelInverseKinematics,
+        "pump": True,                     # gripper_state управляет помпой
         "dxl_num": 5,
-        "park": (250, 300, 280, 150),     # середина рабочей зоны
+        "park": (250, 200, 180, 150),     # середина рабочей зоны
         "start": (250, 200, 180, 150),
     },
 }
@@ -61,6 +62,7 @@ class RobotARM:
         self.dxl_num = self.profile["dxl_num"]
         self.ik = self.profile["ik"]()
         self.speed = speed
+        self.pump_on = False               # последнее отправленное состояние помпы
         time.sleep(1.5)
         self.ser.reset_input_buffer()
         self.set_arm_type()            # сообщаем плате, какая рука подключена
@@ -183,9 +185,10 @@ class RobotARM:
 
     def set_pump(self, enabled: bool):
         """Включает или выключает помпу (присоску). Команда V прошивки.
-        Если помпа не настроена в скетче (PUMP_PIN), будет ARMSerialError."""
+        Если у руки нет помпы, будет ARMSerialError."""
         resp = self._query("V", "1" if enabled else "0")
-        return resp.split()[-1] == "1"
+        self.pump_on = resp.split()[-1] == "1"
+        return self.pump_on
 
     # ---------- Присоска (параллельная рука) ----------
 
@@ -200,20 +203,19 @@ class RobotARM:
         press    - насколько поджать присоску (доля хода 10 мм; 0.7 = 7 мм)
         hold_s   - пауза после включения помпы, чтобы набрался вакуум"""
         z_contact = z_top - self._suction_stroke() * press
-        self.move_arm(x, z_top + approach, angel, rot, False)   # над деталью
-        self.move_arm(x, z_contact, angel, rot, False)          # прижать присоску
-        self.set_pump(True)
-        time.sleep(hold_s)
-        self.move_arm(x, z_top + approach, angel, rot, False)   # поднять
+        self.move_arm(x, z_top + approach, angel, rot, False)   # над деталью, помпа выкл
+        self.move_arm(x, z_contact, angel, rot, True)           # помпа вкл, прижать присоску
+        time.sleep(hold_s)                                      # набор вакуума
+        self.move_arm(x, z_top + approach, angel, rot, True)    # поднять с деталью
 
     def place(self, x, z_top, angel, rot=150, approach=50.0, press=0.3, release_s=0.3):
         """Положить деталь. z_top - высота, на которой должен оказаться верх детали."""
         z_contact = z_top - self._suction_stroke() * press
-        self.move_arm(x, z_top + approach, angel, rot, False)
-        self.move_arm(x, z_contact, angel, rot, False)
-        self.set_pump(False)
+        self.move_arm(x, z_top + approach, angel, rot, True)    # над местом, деталь держим
+        self.move_arm(x, z_contact, angel, rot, True)           # опустить
+        self.move_arm(x, z_contact, angel, rot, False)          # на месте: помпа выкл
         time.sleep(release_s)
-        self.move_arm(x, z_top + approach, angel, rot, False)
+        self.move_arm(x, z_top + approach, angel, rot, False)   # уйти вверх
 
     def _arm_positions(self, x, z, angel, gripper_pov):
         """Позиции суставов по IK + поворот захвата (AX-18A, градусы -> позиция).
@@ -227,9 +229,21 @@ class RobotARM:
         return pos_servo
 
     def move_arm(self, x, z, angel, gripper_pov, gripper_state: bool):
+        """Перемещает руку. gripper_state - держать деталь:
+        - последовательная рука: закрыть / открыть захват;
+        - паллетайзер: включить / выключить помпу.
+          Включение - ДО движения (присоска уже тянет, когда коснётся детали),
+          выключение - ПОСЛЕ прихода в точку (деталь не упадёт по дороге)."""
         pos_servo = self._arm_positions(x, z, angel, gripper_pov)
         pos_servo.append(GRIP_CLOSED if gripper_state else GRIP_OPEN)
-        return self._move(pos_servo)
+
+        use_pump = self.profile.get("pump", False)
+        if use_pump and gripper_state and not self.pump_on:
+            self.set_pump(True)
+        result = self._move(pos_servo)
+        if use_pump and not gripper_state and self.pump_on:
+            self.set_pump(False)
+        return result
 
     def move_arm_paint(self, x, z, angel, gripper_pov, pain_pov):
         pos_servo = self._arm_positions(x, z, angel, gripper_pov)
