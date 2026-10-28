@@ -237,6 +237,8 @@ class RobotARM:
         pos_servo = self._arm_positions(x, z, angel, gripper_pov)
         if self.arm_type == "serial":
             pos_servo.append(GRIP_CLOSED if gripper_state else GRIP_OPEN)
+        else:
+            pos_servo.append(150)
 
         use_pump = self.profile.get("pump", False)
         if use_pump and gripper_state and not self.pump_on:
