@@ -23,7 +23,7 @@ ARM_PROFILES = {
         "ik": ParallelInverseKinematics,
         "pump": True,                     # gripper_state управляет помпой
         "dxl_num": 5,
-        "park": (250, 200, 180, 150),     # середина рабочей зоны
+        "park": (250, 300, 280, 150),     # середина рабочей зоны
         "start": (250, 200, 180, 150),
     },
 }
