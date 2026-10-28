@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 
-from arm_function import ARMIKError, RobotARM
+from arm_function import ARM_PROFILES, ARMIKError, RobotARM
 
 load_dotenv()
 
@@ -18,6 +18,20 @@ if device_path is None:
     print("Param DEVICE_PATH not found in .env")
     exit(1)
 
+# Тип манипулятора из .env. При старте API отправляет его контроллеру (команда A).
+#   ARM_TYPE=serial   (или 1) - последовательный (угловой), 6 моторов
+#   ARM_TYPE=parallel (или 2) - плоско-параллельный (паллетайзер), 5 моторов
+_ARM_TYPE_ALIASES = {"1": "serial", "2": "parallel"}
+arm_type = os.getenv("ARM_TYPE", "").strip().lower()
+arm_type = _ARM_TYPE_ALIASES.get(arm_type, arm_type)
+
+if arm_type not in ARM_PROFILES:
+    print(f"Param ARM_TYPE in .env must be one of: {', '.join(ARM_PROFILES)} (got {arm_type!r})")
+    exit(1)
+
+# Скорость при старте, % (необязательный параметр .env)
+arm_speed = int(os.getenv("ARM_SPEED", "10"))
+
 
 class TorquePayload(BaseModel):
     enabled: bool
@@ -26,7 +40,8 @@ class TorquePayload(BaseModel):
 # ---------- Приложение ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    arm = await asyncio.to_thread(RobotARM, device=device_path, speed=10)
+    print(f"Arm type: {arm_type}, device: {device_path}")
+    arm = await asyncio.to_thread(RobotARM, device=device_path, speed=arm_speed, arm_type=arm_type)
     app.state.arm = arm
     app.state.arm_lock = asyncio.Lock()
     yield
@@ -66,6 +81,10 @@ class PositionSetPaint(BaseModel):
     paint_pov: int
 
 
+class PumpSet(BaseModel):
+    enabled: bool
+
+
 class SpeedSet(BaseModel):
     speed: int = Field(ge=1, le=100, description="Скорость, %")
 
@@ -75,6 +94,12 @@ class WsCommand(PositionSet):
 
 
 # ---------- GET-маршруты ----------
+@app.get("/api/arm/info")
+async def get_arm_info(request: Request):
+    arm: RobotARM = request.app.state.arm
+    return {"arm_type": arm.arm_type, "dxl_num": arm.dxl_num}
+
+
 @app.get("/api/motors/temp")
 async def get_temp(request: Request):
     arm: RobotARM = request.app.state.arm
@@ -129,6 +154,17 @@ async def set_pos_paint(request: Request, payload: PositionSetPaint):
         raise HTTPException(status_code=502, detail=str(e))
 
     return {"status": "Ok"}
+
+
+@app.post("/api/motors/pump")
+async def set_pump(request: Request, payload: PumpSet):
+    arm: RobotARM = request.app.state.arm
+    try:
+        state = await run_on_arm(request.app, arm.set_pump, payload.enabled)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return {"status": "Ok", "pump": state}
 
 
 @app.post("/api/motors/speed")
