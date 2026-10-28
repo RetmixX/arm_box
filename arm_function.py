@@ -235,7 +235,8 @@ class RobotARM:
           Включение - ДО движения (присоска уже тянет, когда коснётся детали),
           выключение - ПОСЛЕ прихода в точку (деталь не упадёт по дороге)."""
         pos_servo = self._arm_positions(x, z, angel, gripper_pov)
-        pos_servo.append(GRIP_CLOSED if gripper_state else GRIP_OPEN)
+        if self.arm_type == "serial":
+            pos_servo.append(GRIP_CLOSED if gripper_state else GRIP_OPEN)
 
         use_pump = self.profile.get("pump", False)
         if use_pump and gripper_state and not self.pump_on:
